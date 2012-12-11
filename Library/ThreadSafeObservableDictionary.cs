@@ -3,19 +3,38 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
 
 namespace Hellosam.Net.Collections
 {
-    public class ConcurrentObservableDictionary<TKey, TValue> :
+    /// <summary>
+    /// Represents a thread-safe, observable collection of key/value pairs that can be accessed by multiple threads concurrently.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The class has INotifyCollectionChanged implemented, so that it could be bound to WPF items control as ItemsSource.
+    /// </para>
+    /// <para>
+    /// The implementation is AVLTree backed - key lookup, insert, delete, replacement is O(log n). 
+    /// However, the observable part in the framework handles insertion and removal in O(n).
+    /// </para>
+    /// <para>
+    /// Multiple thread could read and write this dictionary. Lock is used. 
+    /// If performance is critical, please consider using System.Collections.Concurrent.ConcurrentDictionary provided by .NET 4 instead.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
+    /// <typeparam name="TValue">The type of the values in the dictionary.</typeparam>
+    public class ThreadSafeObservableDictionary<TKey, TValue> :
         IDictionary<TKey, TValue>,
         ICollection,
         INotifyCollectionChanged
     {
         private ReaderWriterLockSlim _accessLock = new ReaderWriterLockSlim();
-        private SortedList<TKey, TValue> store;
+        private AVLTree<TKey, TValue> store;
 
         private volatile ReadOnlyCollection<KeyValuePair<TKey, TValue>> _snapshot;
         private object _snapshotLock = new object();
@@ -23,44 +42,32 @@ namespace Hellosam.Net.Collections
 
         private SynchronizationContext syncContext;
 
-        public ConcurrentObservableDictionary()
+        public ThreadSafeObservableDictionary()
         {
             syncContext = SynchronizationContext.Current;
-            store = new SortedList<TKey, TValue>();
+            store = new AVLTree<TKey, TValue>();
         }
 
-        public ConcurrentObservableDictionary(IDictionary<TKey, TValue> source)
+        public ThreadSafeObservableDictionary(IDictionary<TKey, TValue> source)
         {
             syncContext = SynchronizationContext.Current;
-            store = new SortedList<TKey, TValue>();
+            store = new AVLTree<TKey, TValue>();
             foreach (var pair in source)
                 BaseAdd(pair);
         }
 
-        public ConcurrentObservableDictionary(IComparer<TKey> comparer)
+        public ThreadSafeObservableDictionary(IComparer<TKey> comparer)
         {
             syncContext = SynchronizationContext.Current;
-            store = new SortedList<TKey, TValue>(comparer);
+            store = new AVLTree<TKey, TValue>(comparer);
         }
 
-        public ConcurrentObservableDictionary(IDictionary<TKey, TValue> source, IComparer<TKey> comparer)
+        public ThreadSafeObservableDictionary(IDictionary<TKey, TValue> source, IComparer<TKey> comparer)
         {
             syncContext = SynchronizationContext.Current;
-            store = new SortedList<TKey, TValue>(comparer);
+            store = new AVLTree<TKey, TValue>(comparer);
             foreach (var pair in source)
                 BaseAdd(pair);
-        }
-
-        public ConcurrentObservableDictionary(int capactity)
-        {
-            syncContext = SynchronizationContext.Current;
-            store = new SortedList<TKey, TValue>(capactity);
-        }
-
-        public ConcurrentObservableDictionary(int capactity, IComparer<TKey> comparer)
-        {
-            syncContext = SynchronizationContext.Current;
-            store = new SortedList<TKey, TValue>(capactity, comparer);
         }
 
         protected TResult DoRead<TResult>(Func<TResult> callback)
@@ -159,23 +166,27 @@ namespace Hellosam.Net.Collections
 
         private void BaseAdd(KeyValuePair<TKey, TValue> item)
         {
-            store.Add(item.Key, item.Value);
+            store.Add(item);
             var index = store.IndexOfKey(item.Key);
+            // Debug.WriteLine(string.Format("Add: {1} - {0}", item.Key, index));
             OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
         }
 
         public void Clear()
         {
             DoWrite(() =>
-            {
-                store.Clear();
-                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
-            });
+                        {
+                            OnCollectionChanged(
+                                new NotifyCollectionChangedEventArgs(
+                                    NotifyCollectionChangedAction.Remove,
+                                    store.ToArray(), 0));
+                            store.Clear();
+                        });
         }
 
         bool ICollection<KeyValuePair<TKey, TValue>>.Contains(KeyValuePair<TKey, TValue> item)
         {
-            return DoRead(() => store.ContainsKey(item.Key) && store.ContainsValue(item.Value));
+            return DoRead(() => store.Contains(item));
         }
 
         public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
@@ -190,13 +201,15 @@ namespace Hellosam.Net.Collections
 
         private bool BaseRemove(TKey key)
         {
-            var index = store.IndexOfKey(key);
+            BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
+            var index = store.IndexOfKey(key, out node);
             if (index >= 0)
             {
-                var item = new KeyValuePair<TKey, TValue>(store.Keys[index], store.Values[index]);
-                store.RemoveAt(index);
-                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, item,
-                                                                         index));
+                var value = node.Value;
+                store.Remove(node);
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(
+                                        NotifyCollectionChangedAction.Remove, value,
+                                        index));
                 return true;
             }
             return false;
@@ -243,7 +256,7 @@ namespace Hellosam.Net.Collections
 
         public bool ContainsValue(TValue value)
         {
-            return DoRead(() => store.ContainsValue(value));
+            return DoRead(() => store.Values.Any(v => Comparer<TValue>.Default.Compare(v, value) == 0));
         }
 
         public void Add(TKey key, TValue value)
@@ -271,11 +284,12 @@ namespace Hellosam.Net.Collections
             {
                 DoWrite(() =>
                 {
-                    var index = store.IndexOfKey(key);
-                    store.Values[index] = value;
-                    var item = new KeyValuePair<TKey, TValue>(key, value);
+                    BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
+                    var index = store.IndexOfKey(key, out node);
+                    node.Value = new KeyValuePair<TKey, TValue>(node.Value.Key, value);
                     OnCollectionChanged(
-                        new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, item,
+                        new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace,
+                                                             node.Value,
                                                              index));
                 });
             }

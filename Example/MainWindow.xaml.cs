@@ -11,8 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Windows.Threading;
+using System.Windows.Shapes;using System.Windows.Threading;
 
 namespace Hellosam.Net.Collections.Example
 {
@@ -21,13 +20,15 @@ namespace Hellosam.Net.Collections.Example
     /// </summary>
     public partial class MainWindow : Window
     {
-        private ConcurrentObservableDictionary<string, string> dict;
+        private ThreadSafeObservableDictionary<string, string> dict;
         private const int ThreadCount = 5;
         private const int ItemCount = 10000;
 
+        private Random random = new Random();
+
         public MainWindow()
         {
-            dict = new ConcurrentObservableDictionary<string, string>();
+            dict = new ThreadSafeObservableDictionary<string, string>();
             InitializeComponent();
             listTarget.ItemsSource = dict;
         }
@@ -40,6 +41,7 @@ namespace Hellosam.Net.Collections.Example
             for (int i = 0; i < ThreadCount; i++)
             {
                 var t = new Thread(Add);
+                t.Name = "T" + i;
                 threads.Add(t);
                 t.Start("T" + i);
             }
@@ -64,10 +66,32 @@ namespace Hellosam.Net.Collections.Example
 
         void Add(object o)
         {
-            for (int i = 0; i < ItemCount; i++)
-                dict.Add((string)o + '-' + i, "1");
-            for (int i = 0; i < ItemCount; i += 3)
-                dict.Remove((string)o + '-' + i);
+            // Mass Create, then mass removal.
+            var seq = Enumerable.Range(0, ItemCount).Shuffle(random).ToArray();
+            foreach (var i in seq)
+                dict.Add(string.Format("{0}-{1:00000}", o, i), "1");
+            foreach (var i in  Enumerable.Range(0, seq.Length - 3))
+            {
+                if (!dict.Remove(string.Format("{0}-{1:00000}", o, i)))
+                    throw new ApplicationException("cannot remove this");
+            }
+        }
+    }
+
+    public static class Util
+    {
+        public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> source, Random rng)
+        {
+            T[] elements = source.ToArray();
+            for (int i = elements.Length - 1; i >= 0; i--)
+            {
+                // Swap element "i" with a random earlier element it (or itself)
+                // ... except we don't really need to swap it fully, as we can
+                // return it immediately, and afterwards it's irrelevant.
+                int swapIndex = rng.Next(i + 1);
+                yield return elements[swapIndex];
+                elements[swapIndex] = elements[i];
+            }
         }
     }
 }

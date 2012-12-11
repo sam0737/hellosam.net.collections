@@ -1,42 +1,56 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Hellosam.Net.Collections
 {
     /// <summary>
     /// A Binary Tree node that holds an element and references to other tree nodes
     /// </summary>
-    class BinaryTreeNode<T>
-        where T : IComparable
+    public class BinaryTreeNode<T>
     {
         /// <summary>
         /// The value stored at the node
         /// </summary>
-        public virtual T Value { get; set; }
+        public T Value { get; set; }
+
+        private BinaryTreeNode<T> _leftChild;
 
         /// <summary>
         /// Gets or sets the left child node
         /// </summary>
-        public virtual BinaryTreeNode<T> LeftChild { get; set; }
+        public virtual BinaryTreeNode<T> LeftChild
+        {
+            get { return _leftChild; }
+            set { _leftChild = value; ResetSize(); }
+        }
+
+        private BinaryTreeNode<T> _rightChild;
 
         /// <summary>
         /// Gets or sets the right child node
         /// </summary>
-        public virtual BinaryTreeNode<T> RightChild { get; set; }
+        public virtual BinaryTreeNode<T> RightChild
+        {
+            get { return _rightChild; }
+            set { _rightChild = value; ResetSize(); }
+        }
 
         /// <summary>
         /// Gets or sets the parent node
         /// </summary>
         public virtual BinaryTreeNode<T> Parent { get; set; }
+        
+        public virtual int Size { get; set; }
 
-        /// <summary>
-        /// Gets or sets the Binary Tree the node belongs to
-        /// </summary>
-        public virtual BinaryTree<T> Tree { get; set; }
-
-        public virtual int Height { get; set; }
-        public virtual int Size{ get; set; }
+        protected virtual void ResetSize()
+        {
+            Size =
+                (LeftChild == null ? 0 : LeftChild.Size) +
+                (RightChild == null ? 0 : RightChild.Size) +
+                1;
+        }
 
         /// <summary>
         /// Gets whether the node is a leaf (has no children)
@@ -44,14 +58,6 @@ namespace Hellosam.Net.Collections
         public virtual bool IsLeaf
         {
             get { return this.ChildCount == 0; }
-        }
-
-        /// <summary>
-        /// Gets whether the node is internal (has children nodes)
-        /// </summary>
-        public virtual bool IsInternal
-        {
-            get { return this.ChildCount > 0; }
         }
 
         /// <summary>
@@ -99,30 +105,28 @@ namespace Hellosam.Net.Collections
     }
 
     /// <summary>
+    /// Specifies the mode of scanning through the tree
+    /// </summary>
+    public enum TraversalMode
+    {
+        InOrder = 0,
+        PostOrder,
+        PreOrder
+    }
+
+    /// <summary>
     /// Binary Tree data structure
     /// </summary>
-    class BinaryTree<T> : ICollection<T>
-        where T : IComparable
+    public class BinaryTree<TKey, TValue> : IDictionary<TKey, TValue>, ICollection<KeyValuePair<TKey, TValue>>
     {
-        /// <summary>
-        /// Specifies the mode of scanning through the tree
-        /// </summary>
-        public enum TraversalMode
-        {
-            InOrder = 0,
-            PostOrder,
-            PreOrder
-        }
-
-        private BinaryTreeNode<T> head;
-        private Comparison<IComparable> comparer = CompareElements;
-        private int size;
+        private BinaryTreeNode<KeyValuePair<TKey, TValue>> head = null;
+        protected readonly IComparer<TKey> comparer;
         private TraversalMode traversalMode = TraversalMode.InOrder;
 
         /// <summary>
         /// Gets or sets the root of the tree (the top-most node)
         /// </summary>
-        public virtual BinaryTreeNode<T> Root
+        public virtual BinaryTreeNode<KeyValuePair<TKey, TValue>> Root
         {
             get { return head; }
             set { head = value; }
@@ -158,30 +162,39 @@ namespace Hellosam.Net.Collections
         /// </summary>
         public BinaryTree()
         {
-            head = null;
-            size = 0;
+            comparer = Comparer<TKey>.Default;
+        }
+
+        public BinaryTree(IComparer<TKey> comparer)
+        {
+            this.comparer = comparer;
+        }
+
+
+        public void Add(TKey key, TValue value)
+        {
+            Add(new KeyValuePair<TKey, TValue>(key, value));
         }
 
         /// <summary>
         /// Adds a new element to the tree
         /// </summary>
-        public virtual void Add(T value)
+        public virtual void Add(KeyValuePair<TKey,TValue> value)
         {
-            BinaryTreeNode<T> node = new BinaryTreeNode<T>(value);
+            BinaryTreeNode<KeyValuePair<TKey, TValue>> node =
+                new BinaryTreeNode<KeyValuePair<TKey, TValue>>(value);
             this.Add(node);
         }
 
         /// <summary>
         /// Adds a node to the tree
         /// </summary>
-        public virtual void Add(BinaryTreeNode<T> node)
+        public virtual void Add(BinaryTreeNode<KeyValuePair<TKey, TValue>> node)
         {
             if (this.head == null) //first element being added
             {
                 this.head = node; //set node as root of the tree
-                node.Tree = this;
                 node.Size = 1;
-                node.Height = 1;
             }
             else
             {
@@ -189,24 +202,18 @@ namespace Hellosam.Net.Collections
                 {
                     node.Parent = head; //start at head
                     node.Size = 1;
-                    node.Height = 1; 
-                } else
-                {
-                    node.Height++;
                 }
                 node.Parent.Size++;
 
                 //Node is inserted on the left side if it is smaller or equal to the parent
-                bool insertLeftSide = comparer((IComparable)node.Value, (IComparable)node.Parent.Value) <= 0;
+                bool insertLeftSide =
+                    comparer.Compare(node.Value.Key, node.Parent.Value.Key) <= 0;
 
                 if (insertLeftSide) //insert on the left
                 {
                     if (node.Parent.LeftChild == null)
                     {
-                        NormalizeHeight(node);
-
                         node.Parent.LeftChild = node; //insert in left
-                        node.Tree = this; //assign node to this binary tree
                     }
                     else
                     {
@@ -218,10 +225,7 @@ namespace Hellosam.Net.Collections
                 {
                     if (node.Parent.RightChild == null)
                     {
-                        NormalizeHeight(node);
-
                         node.Parent.RightChild = node; //insert in right
-                        node.Tree = this; //assign node to this binary tree
                     }
                     else
                     {
@@ -231,74 +235,64 @@ namespace Hellosam.Net.Collections
                 }
             }
         }
-
-        private static void NormalizeHeight(BinaryTreeNode<T> node)
+        
+        protected virtual BinaryTreeNode<KeyValuePair<TKey, TValue>> Find(TKey key)
         {
-            var parent = node.Parent;
-            while (parent != null)
-            {
-                var newHeight = 1 +
-                                (
-                                    parent.ChildCount  == 0 ? 0 :
-                                    parent.LeftChild == null ? parent.RightChild.Height :
-                                    parent.RightChild == null ? parent.LeftChild.Height :
-                                    Math.Max(parent.LeftChild.Height, parent.RightChild.Height)
-                                );
-                if (parent.Height == newHeight) break;
-                parent.Height = newHeight;
-                parent = parent.Parent;
-            }
-        }
-
-        /// <summary>
-        /// Returns the first node in the tree with the parameter value.
-        /// </summary>
-        public virtual BinaryTreeNode<T> Find(T value)
-        {
-            BinaryTreeNode<T> node = this.head; //start at head
+            var node = this.Root; //start at head
             while (node != null)
             {
-                if (node.Value.Equals(value)) //parameter value found
+                var r = comparer.Compare(key, node.Value.Key);
+                if (r == 0) //parameter value found
                     return node;
                 else
                 {
                     //Search left if the value is smaller than the current node
-                    bool searchLeft = comparer((IComparable)value, (IComparable)node.Value) < 0;
-
-                    if (searchLeft)
+                    if (r < 0)
                         node = node.LeftChild; //search left
                     else
                         node = node.RightChild; //search right
                 }
             }
-
-            return null; //not found
+            return null;
         }
-
+        
         /// <summary>
         /// Returns whether a value is stored in the tree
         /// </summary>
-        public virtual bool Contains(T value)
+        public virtual bool Contains(KeyValuePair<TKey, TValue> value)
         {
-            return (this.Find(value) != null);
+            var node = Find(value.Key);
+            if (node== null)
+                return false;
+            return Comparer<TValue>.Default.Compare(node.Value.Value, value.Value) == 0;
+        }
+
+        public virtual bool ContainsKey(TKey key)
+        {
+            return Find(key) != null;
         }
 
         /// <summary>
         /// Removes a value from the tree and returns whether the removal was successful.
         /// </summary>
-        public virtual bool Remove(T value)
+        public virtual bool Remove(KeyValuePair<TKey, TValue> value)
         {
-            BinaryTreeNode<T> removeNode = Find(value);
+            var removeNode = Find(value.Key);
+            return this.Remove(removeNode);
+        }
 
+        public virtual bool Remove(TKey key)
+        {
+            var removeNode = Find(key);
             return this.Remove(removeNode);
         }
 
         /// <summary>
         /// Removes a node from the tree and returns whether the removal was successful.
         /// </summary>>
-        public virtual bool Remove(BinaryTreeNode<T> removeNode)
+        public virtual bool Remove(BinaryTreeNode<KeyValuePair<TKey, TValue>> removeNode)
         {
-            if (removeNode == null || removeNode.Tree != this)
+            if (removeNode == null)
                 return false; //value doesn't exist or not of this tree
 
             //Note whether the node to be removed is the root of the tree
@@ -307,7 +301,6 @@ namespace Hellosam.Net.Collections
             if (this.Count == 1)
             {
                 this.head = null; //only element was the root
-                removeNode.Tree = null;
             }
             else if (removeNode.IsLeaf) //Case 1: No Children
             {
@@ -324,7 +317,6 @@ namespace Hellosam.Net.Collections
                 else
                     removeNode.Parent.RightChild = null;
 
-                removeNode.Tree = null;
                 removeNode.Parent = null;
             }
             else if (removeNode.ChildCount == 1) //Case 2: One Child
@@ -343,11 +335,13 @@ namespace Hellosam.Net.Collections
 
                     if (wasHead)
                         this.Root = removeNode.LeftChild; //update root reference if needed
-
-                    if (removeNode.IsLeftChild) //update the parent's child reference
-                        removeNode.Parent.LeftChild = removeNode.LeftChild;
                     else
-                        removeNode.Parent.RightChild = removeNode.LeftChild;
+                    {
+                        if (removeNode.IsLeftChild) //update the parent's child reference
+                            removeNode.Parent.LeftChild = removeNode.LeftChild;
+                        else
+                            removeNode.Parent.RightChild = removeNode.LeftChild;
+                    }
                 }
                 else //Has right child
                 {
@@ -356,28 +350,33 @@ namespace Hellosam.Net.Collections
 
                     if (wasHead)
                         this.Root = removeNode.RightChild; //update root reference if needed
-
-                    if (removeNode.IsLeftChild) //update the parent's child reference
-                        removeNode.Parent.LeftChild = removeNode.RightChild;
                     else
-                        removeNode.Parent.RightChild = removeNode.RightChild;
+                    {
+                        if (removeNode.IsLeftChild) //update the parent's child reference
+                            removeNode.Parent.LeftChild = removeNode.RightChild;
+                        else
+                            removeNode.Parent.RightChild = removeNode.RightChild;
+                    }
                 }
 
-                removeNode.Tree = null;
                 removeNode.Parent = null;
                 removeNode.LeftChild = null;
                 removeNode.RightChild = null;
             }
             else //Case 3: Two Children
             {
-                //Find inorder predecessor (right-most node in left subtree)
-                BinaryTreeNode<T> successorNode = removeNode.LeftChild;
-                while (successorNode.RightChild != null)
-                {
-                    successorNode = successorNode.RightChild;
-                }
-
-                removeNode.Value = successorNode.Value; //replace value
+                // Find the nearest element with only 1 or less children.
+                // From the right subtree, find the left most children
+                var successorNode = removeNode.RightChild;
+                while (successorNode.LeftChild != null)
+                    successorNode = successorNode.LeftChild;
+                
+                /*
+                 * TODO: If the caller retrieved the node from IndexOfKey, 
+                 * then proceed for removal, and rely on the .Value property,
+                 * the value is changed surprisingly.
+                 */
+                removeNode.Value = successorNode.Value; // Swap the value
 
                 this.Remove(successorNode); //recursively remove the inorder predecessor
             }
@@ -391,44 +390,29 @@ namespace Hellosam.Net.Collections
         /// </summary>
         public virtual void Clear()
         {
-            //Remove children first, then parent
-            //(Post-order traversal)
-            IEnumerator<T> enumerator = GetPostOrderEnumerator();
-            while (enumerator.MoveNext())
-            {
-                this.Remove(enumerator.Current);
-            }
-            enumerator.Dispose();
-        }
-
-        /// <summary>
-        /// Returns the height of the entire tree
-        /// </summary>
-        public virtual int GetHeight()
-        {
-            return this.Root == null ? 0 : this.Root.Height;
+            this.Root = null;
         }
 
         /// <summary>
         /// Returns the depth of a subtree rooted at the parameter value
         /// </summary>
-        public virtual int GetDepth(T value)
+        public virtual int GetDepth(KeyValuePair<TKey, TValue> value)
         {
-            BinaryTreeNode<T> node = this.Find(value);
+            var node = this.Find(value.Key);
             return this.GetDepth(node);
         }
 
         /// <summary>
         /// Returns the depth of a subtree rooted at the parameter node
         /// </summary>
-        public virtual int GetDepth(BinaryTreeNode<T> startNode)
+        public virtual int GetDepth(BinaryTreeNode<KeyValuePair<TKey, TValue>> startNode)
         {
             int depth = 0;
 
             if (startNode == null)
                 return depth;
 
-            BinaryTreeNode<T> parentNode = startNode.Parent; //start a node above
+            var parentNode = startNode.Parent; //start a node above
             while (parentNode != null)
             {
                 depth++;
@@ -438,11 +422,86 @@ namespace Hellosam.Net.Collections
             return depth;
         }
 
+        
+        public ICollection<TKey> Keys
+        {
+            get { return (from i in this select i.Key).ToArray(); }
+        }
+
+
+        public ICollection<TValue> Values
+        {
+            get { return (from i in this select i.Value).ToArray(); }
+        }
+
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            var node = Find(key);
+            if (node == null)
+            {
+                value = default(TValue); 
+                return false;
+            }
+            value = node.Value.Value;
+            return true;
+        }
+
+        public TValue this[TKey key]
+        {
+            get
+            {
+                var node = Find(key);
+                if (node == null) throw new KeyNotFoundException();
+                return node.Value.Value;
+            }
+            set
+            {
+                var node = Find(key);
+                if (node == null) throw new KeyNotFoundException();
+                node.Value = new KeyValuePair<TKey, TValue>(node.Value.Key, value);
+            }
+        }
+
+        public int IndexOfKey(TKey key)
+        {
+            BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
+            return IndexOfKey(key, out node);
+        }
+
+        public int IndexOfKey(TKey key, out BinaryTreeNode<KeyValuePair<TKey, TValue>> node)
+        {
+            int size = 0;
+            node = this.Root; //start at head
+            while (node != null)
+            {
+                var r = comparer.Compare(key, node.Value.Key);
+                if (r == 0) //parameter value found
+                    return size + (node.LeftChild != null ? node.LeftChild.Size : 0);
+                else
+                {
+                    //Search left if the value is smaller than the current node
+                    if (r < 0)
+                    {
+                        node = node.LeftChild; //search left
+                    }
+                    else
+                    {
+                        size++;
+                        if (node.LeftChild != null)
+                            size += node.LeftChild.Size;
+                        node = node.RightChild; //search right
+                    }
+                }
+            }
+            node = null;
+            return -1;
+        }
+
         /// <summary>
         /// Returns an enumerator to scan through the elements stored in tree.
         /// The enumerator uses the traversal set in the TraversalMode property.
         /// </summary>
-        public virtual IEnumerator<T> GetEnumerator()
+        public virtual IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
             switch (this.TraversalOrder)
             {
@@ -469,7 +528,7 @@ namespace Hellosam.Net.Collections
         /// <summary>
         /// Returns an enumerator that visits node in the order: left child, parent, right child
         /// </summary>
-        public virtual IEnumerator<T> GetInOrderEnumerator()
+        public virtual IEnumerator<KeyValuePair<TKey, TValue>> GetInOrderEnumerator()
         {
             return new BinaryTreeInOrderEnumerator(this);
         }
@@ -477,7 +536,7 @@ namespace Hellosam.Net.Collections
         /// <summary>
         /// Returns an enumerator that visits node in the order: left child, right child, parent
         /// </summary>
-        public virtual IEnumerator<T> GetPostOrderEnumerator()
+        public virtual IEnumerator<KeyValuePair<TKey, TValue>> GetPostOrderEnumerator()
         {
             return new BinaryTreePostOrderEnumerator(this);
         }
@@ -485,7 +544,7 @@ namespace Hellosam.Net.Collections
         /// <summary>
         /// Returns an enumerator that visits node in the order: parent, left child, right child
         /// </summary>
-        public virtual IEnumerator<T> GetPreOrderEnumerator()
+        public virtual IEnumerator<KeyValuePair<TKey, TValue>> GetPreOrderEnumerator()
         {
             return new BinaryTreePreOrderEnumerator(this);
         }
@@ -493,7 +552,7 @@ namespace Hellosam.Net.Collections
         /// <summary>
         /// Copies the elements in the tree to an array using the traversal mode specified.
         /// </summary>
-        public virtual void CopyTo(T[] array)
+        public virtual void CopyTo(KeyValuePair<TKey, TValue>[] array)
         {
             this.CopyTo(array, 0);
         }
@@ -501,9 +560,9 @@ namespace Hellosam.Net.Collections
         /// <summary>
         /// Copies the elements in the tree to an array using the traversal mode specified.
         /// </summary>
-        public virtual void CopyTo(T[] array, int startIndex)
+        public virtual void CopyTo(KeyValuePair<TKey, TValue>[] array, int startIndex)
         {
-            IEnumerator<T> enumerator = this.GetEnumerator();
+            var enumerator = this.GetEnumerator();
 
             for (int i = startIndex; i < array.Length; i++)
             {
@@ -522,37 +581,24 @@ namespace Hellosam.Net.Collections
             return x.CompareTo(y);
         }
 
-        /// <summary>
-        /// Returns an inorder-traversal enumerator for the tree values
-        /// </summary>
-        internal class BinaryTreeInOrderEnumerator : IEnumerator<T>
+        internal abstract class BinaryTreeEnumeratorBase : IEnumerator<KeyValuePair<TKey, TValue>>
         {
-            private BinaryTreeNode<T> current;
-            private BinaryTree<T> tree;
-            internal Queue<BinaryTreeNode<T>> traverseQueue;
+            private BinaryTreeNode<KeyValuePair<TKey, TValue>> current;
+            private BinaryTree<TKey, TValue> tree;
+            protected Queue<BinaryTreeNode<KeyValuePair<TKey, TValue>>> traverseQueue;
 
-            public BinaryTreeInOrderEnumerator(BinaryTree<T> tree)
+            public BinaryTreeEnumeratorBase(BinaryTree<TKey, TValue> tree)
             {
                 this.tree = tree;
 
                 //Build queue
-                traverseQueue = new Queue<BinaryTreeNode<T>>();
+                traverseQueue = new Queue<BinaryTreeNode<KeyValuePair<TKey, TValue>>>();
                 visitNode(this.tree.Root);
             }
 
-            private void visitNode(BinaryTreeNode<T> node)
-            {
-                if (node == null)
-                    return;
-                else
-                {
-                    visitNode(node.LeftChild);
-                    traverseQueue.Enqueue(node);
-                    visitNode(node.RightChild);
-                }
-            }
+            protected abstract void visitNode(BinaryTreeNode<KeyValuePair<TKey, TValue>> node);
 
-            public T Current
+            public KeyValuePair<TKey, TValue> Current
             {
                 get { return current.Value; }
             }
@@ -581,28 +627,44 @@ namespace Hellosam.Net.Collections
                     current = null;
 
                 return (current != null);
+            }
+        }
+
+
+        /// <summary>
+        /// Returns an inorder-traversal enumerator for the tree values
+        /// </summary>
+        internal class BinaryTreeInOrderEnumerator : BinaryTreeEnumeratorBase
+        {
+            public BinaryTreeInOrderEnumerator(BinaryTree<TKey, TValue> tree)
+                : base(tree)
+            {
+            }
+
+            protected override void visitNode(BinaryTreeNode<KeyValuePair<TKey, TValue>> node)
+            {
+                if (node == null)
+                    return;
+                else
+                {
+                    visitNode(node.LeftChild);
+                    traverseQueue.Enqueue(node);
+                    visitNode(node.RightChild);
+                }
             }
         }
 
         /// <summary>
         /// Returns a postorder-traversal enumerator for the tree values
         /// </summary>
-        internal class BinaryTreePostOrderEnumerator : IEnumerator<T>
+        internal class BinaryTreePostOrderEnumerator : BinaryTreeEnumeratorBase
         {
-            private BinaryTreeNode<T> current;
-            private BinaryTree<T> tree;
-            internal Queue<BinaryTreeNode<T>> traverseQueue;
-
-            public BinaryTreePostOrderEnumerator(BinaryTree<T> tree)
+            public BinaryTreePostOrderEnumerator(BinaryTree<TKey, TValue> tree)
+                : base(tree)
             {
-                this.tree = tree;
-
-                //Build queue
-                traverseQueue = new Queue<BinaryTreeNode<T>>();
-                visitNode(this.tree.Root);
             }
 
-            private void visitNode(BinaryTreeNode<T> node)
+            protected override void visitNode(BinaryTreeNode<KeyValuePair<TKey, TValue>> node)
             {
                 if (node == null)
                     return;
@@ -612,59 +674,20 @@ namespace Hellosam.Net.Collections
                     visitNode(node.RightChild);
                     traverseQueue.Enqueue(node);
                 }
-            }
-
-            public T Current
-            {
-                get { return current.Value; }
-            }
-
-            object IEnumerator.Current
-            {
-                get { return Current; }
-            }
-
-            public void Dispose()
-            {
-                current = null;
-                tree = null;
-            }
-
-            public void Reset()
-            {
-                current = null;
-            }
-
-            public bool MoveNext()
-            {
-                if (traverseQueue.Count > 0)
-                    current = traverseQueue.Dequeue();
-                else
-                    current = null;
-
-                return (current != null);
             }
         }
 
         /// <summary>
         /// Returns an preorder-traversal enumerator for the tree values
         /// </summary>
-        internal class BinaryTreePreOrderEnumerator : IEnumerator<T>
+        internal class BinaryTreePreOrderEnumerator : BinaryTreeEnumeratorBase
         {
-            private BinaryTreeNode<T> current;
-            private BinaryTree<T> tree;
-            internal Queue<BinaryTreeNode<T>> traverseQueue;
-
-            public BinaryTreePreOrderEnumerator(BinaryTree<T> tree)
+            public BinaryTreePreOrderEnumerator(BinaryTree<TKey, TValue> tree)
+                : base(tree)
             {
-                this.tree = tree;
-
-                //Build queue
-                traverseQueue = new Queue<BinaryTreeNode<T>>();
-                visitNode(this.tree.Root);
             }
 
-            private void visitNode(BinaryTreeNode<T> node)
+            protected override void visitNode(BinaryTreeNode<KeyValuePair<TKey, TValue>> node)
             {
                 if (node == null)
                     return;
@@ -674,37 +697,6 @@ namespace Hellosam.Net.Collections
                     visitNode(node.LeftChild);
                     visitNode(node.RightChild);
                 }
-            }
-
-            public T Current
-            {
-                get { return current.Value; }
-            }
-
-            object IEnumerator.Current
-            {
-                get { return Current; }
-            }
-
-            public void Dispose()
-            {
-                current = null;
-                tree = null;
-            }
-
-            public void Reset()
-            {
-                current = null;
-            }
-
-            public bool MoveNext()
-            {
-                if (traverseQueue.Count > 0)
-                    current = traverseQueue.Dequeue();
-                else
-                    current = null;
-
-                return (current != null);
             }
         }
     }

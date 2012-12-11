@@ -42,7 +42,7 @@
   <ItemGroup>
     <Compile Include="AVLTree.cs" />
     <Compile Include="BinaryTree.cs" />
-    <Compile Include="ConcurrentObservableDictionary.cs" />
+    <Compile Include="ThreadSafeObservableDictionary.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

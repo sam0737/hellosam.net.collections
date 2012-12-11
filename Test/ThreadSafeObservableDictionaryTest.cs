@@ -7,12 +7,14 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Hellosam.Net.Collections.Test
 {
     [TestClass]
-    public class ConcurrentObservableDictionaryTest
+    public class ThreadSafeObservableDictionaryTest
     {
         [TestMethod]
         public void Construction()
         {
-            var d = new ConcurrentObservableDictionary<string, string>();
+            var d = new ThreadSafeObservableDictionary<string, string>();
         }
+
+        // TODO: Patches Welcome =)
     }
 }
