@@ -5,15 +5,18 @@ A set of collections class with the focus of thread-safe, WPF and target .Net Fr
 
 Hellosam.Net.Collections.BinaryTree
 -----------------------------------
-Represents collection of key/value pairs implemented in binary tree.
+Represents collection of key/value pairs (dictionary) implemented in binary tree.
 
 Hellosam.Net.Collections.AVLTree
 --------------------------------
-Represents collection of key/value pairs implemented in AVL tree. Insertion, removal, lookup operations are in O(log n)
+Represents collection of key/value pairs (dictionary) implemented in AVL tree. Insertion, removal, lookup operations are in O(log n)
 
 Hellosam.Net.Collections.ThreadSafeObservableDictionary
 -------------------------------------------------------
-Represents collection of key/value pairs implemented in AVL tree. Thread-safe and observable by WPF items content controls.
+Represents collection of key/value pairs (dictionary) implemented in AVL tree. Thread-safe and observable by WPF items content controls.
+
+Please noted that insertion and removal time complexity is subjected to framework Observer, which operates in O(n).
+Event are sent on another thread and hence does not block the writer.
 
 Miscellaneous
 =============
