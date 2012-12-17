@@ -20,17 +20,25 @@ namespace Hellosam.Net.Collections.Example
     /// </summary>
     public partial class MainWindow : Window
     {
-        private ThreadSafeObservableDictionary<string, string> dict;
+        public class MainWindowContext
+        {
+            public ThreadSafeObservableDictionary<string, string> Dictionary { get; set; }
+        }
+
         private const int ThreadCount = 5;
         private const int ItemCount = 10000;
 
         private Random random = new Random();
+        private ThreadSafeObservableDictionary<string, string> dict;
 
         public MainWindow()
         {
             dict = new ThreadSafeObservableDictionary<string, string>();
+            this.DataContext = new MainWindowContext()
+                {
+                    Dictionary = dict
+                };
             InitializeComponent();
-            listTarget.ItemsSource = dict;
         }
 
         private void TestButton_Click(object sender, RoutedEventArgs e)

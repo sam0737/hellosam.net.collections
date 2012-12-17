@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -31,7 +32,8 @@ namespace Hellosam.Net.Collections
     public class ThreadSafeObservableDictionary<TKey, TValue> :
         IDictionary<TKey, TValue>,
         ICollection,
-        INotifyCollectionChanged
+        INotifyCollectionChanged,
+        INotifyPropertyChanged
     {
         private ReaderWriterLockSlim _accessLock = new ReaderWriterLockSlim();
         private AVLTree<TKey, TValue> store;
@@ -133,6 +135,7 @@ namespace Hellosam.Net.Collections
         void NewSnapshopNeeded()
         {
             Interlocked.CompareExchange(ref _newSnapshotNeeded, 1, 0);
+            OnPropertyChanged("Count");
         }
 
         void UpdateSnapshot()
@@ -220,11 +223,6 @@ namespace Hellosam.Net.Collections
             DoRead(() => store.ToArray().CopyTo(array, index));
         }
 
-        int ICollection.Count
-        {
-            get { return DoRead(() => store.Count); }
-        }
-
         public object SyncRoot
         {
             get { throw new NotImplementedException(); }
@@ -235,7 +233,7 @@ namespace Hellosam.Net.Collections
             get { throw new NotImplementedException(); }
         }
 
-        int ICollection<KeyValuePair<TKey, TValue>>.Count
+        public int Count
         {
             get { return DoRead(() => store.Count); }
         }
@@ -344,6 +342,21 @@ namespace Hellosam.Net.Collections
             }
             foreach (var arg in oldQueue)
                 handler(this, arg);
+        }
+
+        #endregion
+
+        #region Implementation of INotifyPropertyChanged
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected void OnPropertyChanged(string name)
+        {
+            PropertyChangedEventHandler handler = PropertyChanged;
+            if (handler != null)
+            {
+                handler(this, new PropertyChangedEventArgs(name));
+            }
         }
 
         #endregion
