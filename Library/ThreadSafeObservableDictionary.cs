@@ -225,12 +225,12 @@ namespace Hellosam.Net.Collections
 
         public object SyncRoot
         {
-            get { throw new NotImplementedException(); }
+            get { return this; }
         }
 
         public bool IsSynchronized
         {
-            get { throw new NotImplementedException(); }
+            get { return true; }
         }
 
         public int Count
