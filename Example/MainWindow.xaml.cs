@@ -84,6 +84,11 @@ namespace Hellosam.Net.Collections.Example
                     throw new ApplicationException("cannot remove this");
             }
         }
+
+        private void ClearButton_Click(object sender, RoutedEventArgs e)
+        {
+            dict.Clear();
+        }
     }
 
     public static class Util

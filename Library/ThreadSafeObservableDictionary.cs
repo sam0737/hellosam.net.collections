@@ -30,7 +30,7 @@ namespace Hellosam.Net.Collections
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary.</typeparam>
     public class ThreadSafeObservableDictionary<TKey, TValue> :
-        IDictionary<TKey, TValue>,
+        IEnumerable<TValue>,
         ICollection,
         INotifyCollectionChanged,
         INotifyPropertyChanged
@@ -38,7 +38,7 @@ namespace Hellosam.Net.Collections
         private ReaderWriterLockSlim _accessLock = new ReaderWriterLockSlim();
         private AVLTree<TKey, TValue> store;
 
-        private volatile ReadOnlyCollection<KeyValuePair<TKey, TValue>> _snapshot;
+        private volatile ReadOnlyCollection<TValue> _snapshot;
         private object _snapshotLock = new object();
         private int _newSnapshotNeeded = 1;
 
@@ -74,6 +74,10 @@ namespace Hellosam.Net.Collections
 
         protected TResult DoRead<TResult>(Func<TResult> callback)
         {
+            if (_accessLock.IsWriteLockHeld || _accessLock.IsReadLockHeld)
+            {
+                return callback();
+            }
             _accessLock.EnterReadLock();
             try { return callback(); }
             finally
@@ -94,11 +98,18 @@ namespace Hellosam.Net.Collections
 
         protected TResult DoWrite<TResult>(Func<TResult> callback)
         {
+            if (_accessLock.IsWriteLockHeld)
+            {
+                var x = callback();
+                NewSnapshopNeeded();
+                return x;
+            }
             _accessLock.EnterWriteLock();
             try
             {
+                var x = callback();
                 NewSnapshopNeeded();
-                return callback();
+                return x;
             }
             finally
             {
@@ -119,7 +130,7 @@ namespace Hellosam.Net.Collections
         /// <summary>
         /// Gets an immutable snapshot of the collection
         /// </summary>
-        public ReadOnlyCollection<KeyValuePair<TKey, TValue>> Snapshot
+        public ReadOnlyCollection<TValue> Snapshot
         {
             get
             {
@@ -143,12 +154,12 @@ namespace Hellosam.Net.Collections
             if (_newSnapshotNeeded > 0)
                 lock (_snapshotLock)
                     if (Interlocked.CompareExchange(ref _newSnapshotNeeded, 0, 1) == 1)
-                        _snapshot = new ReadOnlyCollection<KeyValuePair<TKey, TValue>>(store.ToList());
+                        _snapshot = new ReadOnlyCollection<TValue>(store.Values.ToList());
         }
 
         #region Implementation of IEnumerable
 
-        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
+        public IEnumerator<TValue> GetEnumerator()
         {
             return Snapshot.GetEnumerator();
         }
@@ -172,7 +183,7 @@ namespace Hellosam.Net.Collections
             store.Add(item);
             var index = store.IndexOfKey(item.Key);
             // Debug.WriteLine(string.Format("Add: {1} - {0}", item.Key, index));
-            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item, index));
+            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item.Value, index));
         }
 
         public void Clear()
@@ -182,14 +193,9 @@ namespace Hellosam.Net.Collections
                             OnCollectionChanged(
                                 new NotifyCollectionChangedEventArgs(
                                     NotifyCollectionChangedAction.Remove,
-                                    store.ToArray(), 0));
+                                    store.Select(i => i.Value).ToArray(), 0));
                             store.Clear();
                         });
-        }
-
-        bool ICollection<KeyValuePair<TKey, TValue>>.Contains(KeyValuePair<TKey, TValue> item)
-        {
-            return DoRead(() => store.Contains(item));
         }
 
         public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
@@ -211,7 +217,7 @@ namespace Hellosam.Net.Collections
                 var value = node.Value;
                 store.Remove(node);
                 OnCollectionChanged(new NotifyCollectionChangedEventArgs(
-                                        NotifyCollectionChangedAction.Remove, value,
+                                        NotifyCollectionChangedAction.Remove, value.Value,
                                         index));
                 return true;
             }
@@ -284,11 +290,20 @@ namespace Hellosam.Net.Collections
                 {
                     BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
                     var index = store.IndexOfKey(key, out node);
-                    node.Value = new KeyValuePair<TKey, TValue>(node.Value.Key, value);
-                    OnCollectionChanged(
-                        new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace,
-                                                             node.Value,
-                                                             index));
+                    if (node == null)
+                    {
+                        BaseAdd(new KeyValuePair<TKey, TValue>(key, value));
+                    }
+                    else
+                    {
+                        var oldValue = node.Value.Value;
+                        node.Value = new KeyValuePair<TKey, TValue>(key, value);
+                        OnCollectionChanged(
+                            new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace,
+                                                                 node.Value.Value,
+                                                                 oldValue,
+                                                                 index));
+                    }
                 });
             }
         }

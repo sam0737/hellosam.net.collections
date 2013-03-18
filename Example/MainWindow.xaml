@@ -10,6 +10,7 @@
         <ListView Name="listTarget" ItemsSource="{Binding Dictionary}"/>
         <StackPanel Orientation="Horizontal" Grid.Row="1">
             <Button Width="72" Height="30" Margin="10" Click="TestButton_Click">Test</Button>
+            <Button Height="30" Width="72" Click="ClearButton_Click">Clear</Button>
             <TextBlock VerticalAlignment="Center" Text="{Binding Dictionary.Count}" Margin="10"></TextBlock>
             <TextBlock VerticalAlignment="Center" Name="textStatus"></TextBlock>
         </StackPanel>
