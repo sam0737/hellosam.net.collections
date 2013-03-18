@@ -190,6 +190,7 @@ namespace Hellosam.Net.Collections
         {
             DoWrite(() =>
                         {
+                            if (store.Count == 0) return;
                             OnCollectionChanged(
                                 new NotifyCollectionChangedEventArgs(
                                     NotifyCollectionChangedAction.Remove,
