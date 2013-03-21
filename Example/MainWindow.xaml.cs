@@ -22,18 +22,18 @@ namespace Hellosam.Net.Collections.Example
     {
         public class MainWindowContext
         {
-            public ThreadSafeObservableDictionary<string, string> Dictionary { get; set; }
+            public ObservableDictionary<string, string> Dictionary { get; set; }
         }
 
         private const int ThreadCount = 5;
         private const int ItemCount = 10000;
 
         private Random random = new Random();
-        private ThreadSafeObservableDictionary<string, string> dict;
+        private ObservableDictionary<string, string> dict;
 
         public MainWindow()
         {
-            dict = new ThreadSafeObservableDictionary<string, string>();
+            dict = new ObservableDictionary<string, string>();
             this.DataContext = new MainWindowContext()
                 {
                     Dictionary = dict
@@ -88,6 +88,14 @@ namespace Hellosam.Net.Collections.Example
         private void ClearButton_Click(object sender, RoutedEventArgs e)
         {
             dict.Clear();
+        }
+
+        private void TestButton2_Click(object sender, RoutedEventArgs e)
+        {
+            for (int i = 0; i < ThreadCount; i++)
+            {
+                Add(i);
+            }
         }
     }
 

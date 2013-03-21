@@ -42,8 +42,11 @@
   <ItemGroup>
     <Compile Include="AVLTree.cs" />
     <Compile Include="BinaryTree.cs" />
+    <Compile Include="ObservableDictionaryWithNotification.cs" />
+    <Compile Include="ObservableDictionary.cs" />
     <Compile Include="ThreadSafeObservableDictionary.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ThreadSafeObservableDictionaryWithNotification.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

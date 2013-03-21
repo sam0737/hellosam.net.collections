@@ -29,50 +29,38 @@ namespace Hellosam.Net.Collections
     /// </remarks>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary.</typeparam>
-    public class ThreadSafeObservableDictionary<TKey, TValue> :
-        IEnumerable<TValue>,
-        ICollection,
-        INotifyCollectionChanged,
-        INotifyPropertyChanged
+    public class ThreadSafeObservableDictionary<TKey, TValue> : ObservableDictionary<TKey, TValue>
     {
-        private ReaderWriterLockSlim _accessLock = new ReaderWriterLockSlim();
-        private AVLTree<TKey, TValue> store;
-
-        private volatile ReadOnlyCollection<TValue> _snapshot;
-        private object _snapshotLock = new object();
-        private int _newSnapshotNeeded = 1;
-
         private SynchronizationContext syncContext;
+        private object _postQueueLock = new object();
 
-        public ThreadSafeObservableDictionary()
+        private volatile Queue<NotifyCollectionChangedEventArgs> _postQueue =
+            new Queue<NotifyCollectionChangedEventArgs>();
+
+        private ReaderWriterLockSlim _accessLock = new ReaderWriterLockSlim();
+
+        public ThreadSafeObservableDictionary() : base()
         {
             syncContext = SynchronizationContext.Current;
-            store = new AVLTree<TKey, TValue>();
         }
 
-        public ThreadSafeObservableDictionary(IDictionary<TKey, TValue> source)
+        public ThreadSafeObservableDictionary(IDictionary<TKey, TValue> source) : base(source)
         {
             syncContext = SynchronizationContext.Current;
-            store = new AVLTree<TKey, TValue>();
-            foreach (var pair in source)
-                BaseAdd(pair);
         }
 
-        public ThreadSafeObservableDictionary(IComparer<TKey> comparer)
+        public ThreadSafeObservableDictionary(IComparer<TKey> comparer) : base(comparer)
         {
             syncContext = SynchronizationContext.Current;
-            store = new AVLTree<TKey, TValue>(comparer);
         }
 
-        public ThreadSafeObservableDictionary(IDictionary<TKey, TValue> source, IComparer<TKey> comparer)
+        public ThreadSafeObservableDictionary(IDictionary<TKey, TValue> source, IComparer<TKey> comparer) : base(source, comparer)
         {
             syncContext = SynchronizationContext.Current;
-            store = new AVLTree<TKey, TValue>(comparer);
-            foreach (var pair in source)
-                BaseAdd(pair);
         }
 
-        protected TResult DoRead<TResult>(Func<TResult> callback)
+
+        protected override TResult DoRead<TResult>(System.Func<TResult> callback)
         {
             if (_accessLock.IsWriteLockHeld || _accessLock.IsReadLockHeld)
             {
@@ -86,17 +74,7 @@ namespace Hellosam.Net.Collections
             }
         }
 
-        protected void DoRead(Action callback)
-        {
-            DoRead<object>(
-                () =>
-                {
-                    callback();
-                    return null;
-                });
-        }
-
-        protected TResult DoWrite<TResult>(Func<TResult> callback)
+        protected override TResult DoWrite<TResult>(Func<TResult> callback)
         {
             if (_accessLock.IsWriteLockHeld)
             {
@@ -116,265 +94,32 @@ namespace Hellosam.Net.Collections
                 _accessLock.ExitWriteLock();
             }
         }
-
-        protected void DoWrite(Action callback)
+        
+        protected internal override void OnCollectionChanged(NotifyCollectionChangedEventArgs args)
         {
-            DoWrite<object>(
-                () =>
-                {
-                    callback();
-                    return null;
-                });
-        }
-
-        /// <summary>
-        /// Gets an immutable snapshot of the collection
-        /// </summary>
-        public ReadOnlyCollection<TValue> Snapshot
-        {
-            get
+            if (syncContext == null)
             {
-                return DoRead(
-                    () =>
-                    {
-                        UpdateSnapshot();
-                        return _snapshot;
-                    });
+                base.OnCollectionChanged(args);
+                return;
             }
-        }
-
-        void NewSnapshopNeeded()
-        {
-            Interlocked.CompareExchange(ref _newSnapshotNeeded, 1, 0);
-            OnPropertyChanged("Count");
-        }
-
-        void UpdateSnapshot()
-        {
-            if (_newSnapshotNeeded > 0)
-                lock (_snapshotLock)
-                    if (Interlocked.CompareExchange(ref _newSnapshotNeeded, 0, 1) == 1)
-                        _snapshot = new ReadOnlyCollection<TValue>(store.Values.ToList());
-        }
-
-        #region Implementation of IEnumerable
-
-        public IEnumerator<TValue> GetEnumerator()
-        {
-            return Snapshot.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return Snapshot.GetEnumerator();
-        }
-
-        #endregion
-
-        #region Implementation of ICollection<KeyValuePair<TKey,TValue>>
-
-        public void Add(KeyValuePair<TKey, TValue> item)
-        {
-            DoWrite(() => BaseAdd(item));
-        }
-
-        private void BaseAdd(KeyValuePair<TKey, TValue> item)
-        {
-            store.Add(item);
-            var index = store.IndexOfKey(item.Key);
-            // Debug.WriteLine(string.Format("Add: {1} - {0}", item.Key, index));
-            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item.Value, index));
-        }
-
-        public void Clear()
-        {
-            DoWrite(() =>
-                        {
-                            if (store.Count == 0) return;
-                            OnCollectionChanged(
-                                new NotifyCollectionChangedEventArgs(
-                                    NotifyCollectionChangedAction.Remove,
-                                    store.Select(i => i.Value).ToArray(), 0));
-                            store.Clear();
-                        });
-        }
-
-        public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
-        {
-            DoRead(() => store.ToArray().CopyTo(array, arrayIndex));
-        }
-
-        public bool Remove(KeyValuePair<TKey, TValue> item)
-        {
-            return DoWrite(() => BaseRemove(item.Key));
-        }
-
-        private bool BaseRemove(TKey key)
-        {
-            BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
-            var index = store.IndexOfKey(key, out node);
-            if (index >= 0)
+            lock (_postQueueLock)
             {
-                var value = node.Value;
-                store.Remove(node);
-                OnCollectionChanged(new NotifyCollectionChangedEventArgs(
-                                        NotifyCollectionChangedAction.Remove, value.Value,
-                                        index));
-                return true;
+                _postQueue.Enqueue(args);
             }
-            return false;
+            syncContext.Post(ProcessPostQueue, null);
         }
 
-        public void CopyTo(Array array, int index)
+        private void ProcessPostQueue(object state)
         {
-            DoRead(() => store.ToArray().CopyTo(array, index));
-        }
-
-        public object SyncRoot
-        {
-            get { return this; }
-        }
-
-        public bool IsSynchronized
-        {
-            get { return true; }
-        }
-
-        public int Count
-        {
-            get { return DoRead(() => store.Count); }
-        }
-
-        public bool IsReadOnly
-        {
-            get { return false; }
-        }
-
-        #endregion
-
-        #region Implementation of IDictionary<TKey,TValue>
-
-        public bool ContainsKey(TKey key)
-        {
-            return DoRead(() => store.ContainsKey(key));
-        }
-
-        public bool ContainsValue(TValue value)
-        {
-            return DoRead(() => store.Values.Any(v => Comparer<TValue>.Default.Compare(v, value) == 0));
-        }
-
-        public void Add(TKey key, TValue value)
-        {
-            DoWrite(() => BaseAdd(new KeyValuePair<TKey, TValue>(key, value)));
-        }
-
-        public bool Remove(TKey key)
-        {
-            return DoWrite(() => BaseRemove(key));
-        }
-
-        public bool TryGetValue(TKey key, out TValue value)
-        {
-            TValue innerValue = default(TValue);
-            var result = DoRead(() => store.TryGetValue(key, out innerValue));
-            value = innerValue;
-            return result;
-        }
-
-        public TValue this[TKey key]
-        {
-            get { return DoRead(() => store[key]); }
-            set
-            {
-                DoWrite(() =>
-                {
-                    BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
-                    var index = store.IndexOfKey(key, out node);
-                    if (node == null)
-                    {
-                        BaseAdd(new KeyValuePair<TKey, TValue>(key, value));
-                    }
-                    else
-                    {
-                        var oldValue = node.Value.Value;
-                        node.Value = new KeyValuePair<TKey, TValue>(key, value);
-                        OnCollectionChanged(
-                            new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace,
-                                                                 node.Value.Value,
-                                                                 oldValue,
-                                                                 index));
-                    }
-                });
-            }
-        }
-
-        public ICollection<TKey> Keys
-        {
-            get { return DoRead(() => store.Keys); }
-        }
-
-        public ICollection<TValue> Values
-        {
-            get { return DoRead(() => store.Values); }
-        }
-
-        #endregion
-
-        #region Implementation of INotifyCollectionChanged
-
-        public event NotifyCollectionChangedEventHandler CollectionChanged;
-
-        private object _postQueueLock = new object();
-        private volatile Queue<NotifyCollectionChangedEventArgs> _postQueue =
-            new Queue<NotifyCollectionChangedEventArgs>();
-
-        private void OnCollectionChanged(NotifyCollectionChangedEventArgs args)
-        {
-            var handler = CollectionChanged;
-            if (handler != null)
-                if (syncContext == null)
-                {
-                    handler(this, args);
-                }
-                else
-                {
-                    lock (_postQueueLock)
-                    {
-                        _postQueue.Enqueue(args);
-                    }
-                    syncContext.Post(ProcessPostQueue, handler);
-                }
-        }
-
-        void ProcessPostQueue(object state)
-        {
-            var handler = (NotifyCollectionChangedEventHandler)state;
-
             var oldQueue = _postQueue;
             lock (_postQueueLock)
             {
                 _postQueue = new Queue<NotifyCollectionChangedEventArgs>();
             }
             foreach (var arg in oldQueue)
-                handler(this, arg);
-        }
-
-        #endregion
-
-        #region Implementation of INotifyPropertyChanged
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        protected void OnPropertyChanged(string name)
-        {
-            PropertyChangedEventHandler handler = PropertyChanged;
-            if (handler != null)
             {
-                handler(this, new PropertyChangedEventArgs(name));
+                base.OnCollectionChanged(arg);
             }
         }
-
-        #endregion
     }
 }
