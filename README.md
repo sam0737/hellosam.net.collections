@@ -11,17 +11,30 @@ Hellosam.Net.Collections.AVLTree
 --------------------------------
 Represents collection of key/value pairs (dictionary) implemented in AVL tree. Insertion, removal, lookup operations are in O(log n)
 
-Hellosam.Net.Collections.ThreadSafeObservableDictionary
+Hellosam.Net.Collections.ObservableDictionary
 -------------------------------------------------------
-Represents collection of key/value pairs (dictionary) implemented in AVL tree. Thread-safe and observable by WPF items content controls.
+Represents collection of key/value pairs (dictionary) implemented in AVL tree. 
+This implements INotifyPropertyChanged and INotifyCollectionChanged hence it is observable by WPF items content controls.
 
-Please noted that insertion and removal time complexity is subjected to framework Observer, which operates in O(n).
-Event are sent on another thread and hence does not block the writer.
+Please noted that insertion and removal time complexity is subjected to framework Observer, which usually operates in O(n).
+
+Hellosam.Net.Collections.ObservableDictionaryWithNotification
+-------------------------------------------------------
+Same as Hellosam.Net.Collections.ObservableDictionary, plus providing "self-replace" Collection changed event when element
+property is updated. This is usable only with value type which implements INotifyPropertyChanged.
+
+When bound to a CollectionView, this feature allows Grouping/Sorting to update.
+
+Consider using DeferRequest() to consolidate & ThreadSafeObservableDictionaryWithNotification
+-------------------------------------------------------
+Thread-safe verision of above.
+INotifyPropertyChanged and INotifyCollectionChanged are sent on another thread and hence does not block the writer.
+
 
 Miscellaneous
 =============
-
-Forks and Patches are welcome.
+Forks and Patches are welcome. Currently the tests file is incompleted. Use at your own risk.
+The ThreadSafe version is less battle tested.
 
 Source Code
 -----------

@@ -59,6 +59,11 @@ namespace Hellosam.Net.Collections
             syncContext = SynchronizationContext.Current;
         }
 
+        [Obsolete("Not implemented for ThreadSafeObservableDictionary yet")]
+        public override IDisposable DeferRefresh()
+        {
+            return null;
+        }
 
         protected override TResult DoRead<TResult>(System.Func<TResult> callback)
         {

@@ -92,10 +92,11 @@ namespace Hellosam.Net.Collections.Example
 
         private void TestButton2_Click(object sender, RoutedEventArgs e)
         {
-            for (int i = 0; i < ThreadCount; i++)
-            {
-                Add(i);
-            }
+            using (dict.DeferRefresh())
+                for (int i = 0; i < ThreadCount; i++)
+                {
+                    Add(i);
+                }
         }
     }
 

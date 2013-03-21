@@ -17,6 +17,10 @@ namespace Hellosam.Net.Collections
         private int _newSnapshotNeeded = 1;
         private volatile ReadOnlyCollection<TValue> _snapshot;
 
+        private int _deferCount;
+        private HashSet<string> _deferredPropertyChanges;
+        private List<NotifyCollectionChangedEventArgs> _deferredCollectionChanges;
+
         public ObservableDictionary()
         {
             store = new AVLTree<TKey, TValue>();
@@ -45,6 +49,58 @@ namespace Hellosam.Net.Collections
         {
             Interlocked.CompareExchange(ref _newSnapshotNeeded, 1, 0);
             OnPropertyChanged("Count");
+        }
+
+        protected virtual bool IsDeferred
+        {
+            get { return _deferCount > 0; }
+        }
+
+        public virtual IDisposable DeferRefresh()
+        {
+            if ( _deferCount++ == 0)
+                StartDefer();
+            return new DeferHelper(this);
+        }
+
+        protected virtual void StartDefer()
+        {
+            if (_deferredPropertyChanges == null)
+                _deferredPropertyChanges = new HashSet<string>();
+            if (_deferredCollectionChanges == null)
+                _deferredCollectionChanges = new List<NotifyCollectionChangedEventArgs>();
+        }
+
+        protected virtual void EndDefer()
+        {
+            if (--_deferCount == 0)
+            {
+                ProcessDefer();
+            }
+        }
+
+        protected virtual void ProcessDefer()
+        {
+            foreach (var key in _deferredPropertyChanges)
+                OnPropertyChanged(key);
+            _deferredPropertyChanges.Clear();
+            foreach (var args in _deferredCollectionChanges)
+                OnCollectionChanged(args);
+            _deferredCollectionChanges.Clear();
+        }
+
+        public class DeferHelper:IDisposable
+        {
+            private ObservableDictionary<TKey, TValue> _dictionary;
+            public DeferHelper(ObservableDictionary<TKey, TValue> dictionary)
+            {
+                _dictionary = dictionary;
+            }
+
+            public void Dispose()
+            {
+                _dictionary.EndDefer();
+            }
         }
 
         protected ReadOnlyCollection<TValue> UpdateSnapshot()
@@ -153,13 +209,21 @@ namespace Hellosam.Net.Collections
             store.Add(item);
             var index = store.IndexOfKey(item.Key);
             // Debug.WriteLine(string.Format("Add: {1} - {0}", item.Key, index));
-            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item.Value, index));
+            OnCollectionChangedForKey(item.Key, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, item.Value, index));
         }
-
-        protected internal int IndexOfKey(TKey key)
+        
+        protected internal int IndexOfKey(TKey key, out TValue value)
         {
             // ReadLock must be obtained first
-            return store.IndexOfKey(key);
+            BinaryTreeNode<KeyValuePair<TKey, TValue>> node;
+            var index = store.IndexOfKey(key, out node);
+            if (index >= 0)
+            {
+                value = node.Value.Value;
+                return index;
+            }
+            value = default(TValue);
+            return -1;
         }
 
         public void Clear()
@@ -193,9 +257,10 @@ namespace Hellosam.Net.Collections
             {
                 var value = node.Value;
                 store.Remove(node);
-                OnCollectionChanged(new NotifyCollectionChangedEventArgs(
-                                        NotifyCollectionChangedAction.Remove, value.Value,
-                                        index));
+                OnCollectionChangedForKey(value.Key,
+                                          new NotifyCollectionChangedEventArgs(
+                                              NotifyCollectionChangedAction.Remove, value.Value,
+                                              index));
                 return true;
             }
             return false;
@@ -251,20 +316,32 @@ namespace Hellosam.Net.Collections
                                 {
                                     var oldValue = node.Value.Value;
                                     node.Value = new KeyValuePair<TKey, TValue>(key, value);
-                                    OnCollectionChanged(
-                                        new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace,
-                                                                             node.Value.Value,
-                                                                             oldValue,
-                                                                             index));
+                                    OnCollectionChangedForKey(
+                                        key,
+                                        new NotifyCollectionChangedEventArgs(
+                                            NotifyCollectionChangedAction.Replace,
+                                            node.Value.Value,
+                                            oldValue,
+                                            index));
                                 }
                             });
             }
+        }
+
+        protected virtual void OnCollectionChangedForKey(TKey key, NotifyCollectionChangedEventArgs args)
+        {
+            OnCollectionChanged(args);
         }
 
         public event NotifyCollectionChangedEventHandler CollectionChanged;
 
         virtual protected internal void OnCollectionChanged(NotifyCollectionChangedEventArgs args)
         {
+            if (IsDeferred)
+            {
+                _deferredCollectionChanges.Add(args);
+                return;
+            }
             var handler = CollectionChanged;
             if (handler != null)
                 handler(this, args);
@@ -274,6 +351,11 @@ namespace Hellosam.Net.Collections
 
         protected void OnPropertyChanged(string name)
         {
+            if (IsDeferred)
+            {
+                _deferredPropertyChanges.Add(name);
+                return;
+            }
             PropertyChangedEventHandler handler = PropertyChanged;
             if (handler != null)
             {

@@ -50,39 +50,51 @@ namespace Hellosam.Net.Collections
             }
         }
 
+
+        protected void EmitNotification(KeyValuePair<TKey, TValue> item)
+        {
+            EmitNotification(item.Key);
+        }
+
+        protected void EmitNotification(TKey key)
+        {
+            DoRead(() =>
+            {
+                TValue value;
+                var index = IndexOfKey(key, out value);
+                if (index >= 0)
+                {
+                    OnCollectionChanged(
+                        new NotifyCollectionChangedEventArgs(
+                            NotifyCollectionChangedAction.Replace,
+                            value, value, index));
+                }
+            });
+        }
+
         private class InverseNotificationRelay
         {
             private readonly WeakReference _dictionaryRef;
             private KeyValuePair<TKey, TValue> _item;
 
-            public InverseNotificationRelay(ThreadSafeObservableDictionary<TKey, TValue> dictionary,
+            public InverseNotificationRelay(ThreadSafeObservableDictionaryWithNotification<TKey, TValue> dictionary,
                                             KeyValuePair<TKey, TValue> item)
             {
                 _dictionaryRef = new WeakReference(dictionary);
                 _item = item;
 
-                ((INotifyPropertyChanged) item.Value).PropertyChanged +=
+                ((INotifyPropertyChanged)item.Value).PropertyChanged +=
                     new PropertyChangedEventHandler(Item_PropertyChanged);
             }
 
             private void Item_PropertyChanged(object sender, PropertyChangedEventArgs e)
             {
-                var dictionary = _dictionaryRef.Target as ThreadSafeObservableDictionary<TKey, TValue>;
+                var dictionary = _dictionaryRef.Target as ThreadSafeObservableDictionaryWithNotification<TKey, TValue>;
                 if (dictionary == null) return;
 
-                dictionary.DoRead(
-                    () =>
-                        {
-                            var index = dictionary.IndexOfKey(_item.Key);
-                            if (index >= 0)
-                            {
-                                dictionary.OnCollectionChanged(
-                                    new NotifyCollectionChangedEventArgs(
-                                        NotifyCollectionChangedAction.Replace,
-                                        _item.Value, _item.Value, index));
-                            }
-                        });
+                dictionary.EmitNotification(_item);
             }
         }
+
     }
 }

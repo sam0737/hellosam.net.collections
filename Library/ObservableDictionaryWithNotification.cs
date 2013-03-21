@@ -11,6 +11,8 @@ namespace Hellosam.Net.Collections
         ObservableDictionary<TKey, TValue> where TValue : class
     {
         private bool _sourceHasNotification;
+        private HashSet<TKey> _deferredElementReplace;
+        private HashSet<TKey> _deferredSkipEmit;
 
         public ObservableDictionaryWithNotification()
             : base()
@@ -36,6 +38,26 @@ namespace Hellosam.Net.Collections
             CheckSourceCapability();
         }
 
+        protected override void StartDefer()
+        {
+            base.StartDefer();
+            if (_deferredElementReplace == null)
+                _deferredElementReplace = new HashSet<TKey>();
+            if (_deferredSkipEmit == null)
+                _deferredSkipEmit = new HashSet<TKey>();
+        }
+
+        protected override void ProcessDefer()
+        {
+            base.ProcessDefer();
+            foreach (var key in _deferredSkipEmit)
+                _deferredElementReplace.Remove(key);
+            foreach (var key in _deferredElementReplace)
+                EmitNotification(key);
+            _deferredSkipEmit.Clear();
+            _deferredElementReplace.Clear();
+        }
+
         private void CheckSourceCapability()
         {
             _sourceHasNotification = typeof (INotifyPropertyChanged).IsAssignableFrom(typeof (TValue));
@@ -50,12 +72,45 @@ namespace Hellosam.Net.Collections
             }
         }
 
+        protected void EmitNotification(KeyValuePair<TKey, TValue> item)
+        {
+            if (IsDeferred)
+            {
+                _deferredElementReplace.Add(item.Key);
+                return;
+            }
+            EmitNotification(item.Key);
+        }
+
+        protected void EmitNotification(TKey key)
+        {
+            DoRead(() =>
+            {
+                TValue value;
+                var index = IndexOfKey(key, out value);
+                if (index >= 0)
+                {
+                    OnCollectionChanged(
+                        new NotifyCollectionChangedEventArgs(
+                            NotifyCollectionChangedAction.Replace,
+                            value, value, index));
+                }
+            });
+        }
+
+        protected override void OnCollectionChangedForKey(TKey key, NotifyCollectionChangedEventArgs args)
+        {
+            if (IsDeferred)
+                _deferredSkipEmit.Add(key);
+            base.OnCollectionChangedForKey(key, args);
+        }
+
         private class InverseNotificationRelay
         {
             private readonly WeakReference _dictionaryRef;
             private KeyValuePair<TKey, TValue> _item;
-            
-            public InverseNotificationRelay(ObservableDictionary<TKey, TValue> dictionary,
+
+            public InverseNotificationRelay(ObservableDictionaryWithNotification<TKey, TValue> dictionary,
                                             KeyValuePair<TKey, TValue> item)
             {
                 _dictionaryRef = new WeakReference(dictionary);
@@ -67,21 +122,10 @@ namespace Hellosam.Net.Collections
 
             private void Item_PropertyChanged(object sender, PropertyChangedEventArgs e)
             {
-                var dictionary = _dictionaryRef.Target as ObservableDictionary<TKey, TValue>;
+                var dictionary = _dictionaryRef.Target as ObservableDictionaryWithNotification<TKey, TValue>;
                 if (dictionary == null) return;
 
-                dictionary.DoRead(
-                    () =>
-                        {
-                            var index = dictionary.IndexOfKey(_item.Key);
-                            if (index >= 0)
-                            {
-                                dictionary.OnCollectionChanged(
-                                    new NotifyCollectionChangedEventArgs(
-                                        NotifyCollectionChangedAction.Replace,
-                                        _item.Value, _item.Value, index));
-                            }
-                        });
+                dictionary.EmitNotification(_item);
             }
         }
     }
