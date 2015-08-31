@@ -38,7 +38,7 @@ The ThreadSafe version is less battle tested.
 
 Source Code
 -----------
-Source code of this extension is available at https://github.com/sam0737/yihaodian-unitprice-chrome-extension
+Source code of this extension is available at https://github.com/sam0737/hellosam.net.collections
 
 License And Copyright
 ---------------------
