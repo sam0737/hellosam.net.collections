@@ -1,7 +1,10 @@
 Hellosam.Net.Collections
 ========================
 
-A set of collections class with the focus of thread-safe, WPF and target .Net Framework 3.5. 
+A set of collections class with the focus of thread-safe and WPF.
+
+NuGet is published at https://www.nuget.org/packages/hellosam.net.collections
+The binary is compiled for .Net 3.5 but can also be used for .Net 4.0, 4.5, 4.6 too.
 
 Hellosam.Net.Collections.BinaryTree
 -----------------------------------
@@ -36,8 +39,8 @@ Miscellaneous
 Forks and Patches are welcome. Currently the tests file is incompleted. Use at your own risk.
 The ThreadSafe version is less battle tested.
 
-Source Code
------------
+Source Code and Publishing
+--------------------------
 Source code of this extension is available at https://github.com/sam0737/hellosam.net.collections
 
 License And Copyright
